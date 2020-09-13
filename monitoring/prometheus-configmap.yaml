@@ -76,7 +76,7 @@ data:
             target_label: job
 
       # 修改pod
-      - job_name: kubernetes-pods
+      - job_name-: kubernetes-pods
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
