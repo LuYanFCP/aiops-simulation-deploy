@@ -11,17 +11,27 @@ import kubernetes as k8s
 # from kubernetes import client, config
 from .k8s_tools import get_pod_rand
 import random
+import json
 
 CHAOS_ACTIONS = {}
 CHAOS_PARAM = {}
 
 class Record:
-    def __init__(self, file_path) -> None:
-        pass
+    """[summary]
+    TO-DO:
+        - [x] 实现一个类似于logger一样一行一行持续写如的类
     
-    def record(self):
-        pass
-
+    """    
+    def __init__(self, file_path) -> None:
+        self.fp = open(file_path, 'w', encoding='utf-8')
+        # self.fp.writelines("[")
+        
+    def record(self, date:datetime,  chaos: Chaos):
+        json_record = {
+            'datetime': str(date),
+            'chaos': chaos}
+        self.fp.writelines(json.dump(json_record))
+        self.fp.flush()   # 刷新缓冲区
 
 class Chaos:
     def __init__(self, _name, _scope, _target, _actions, _param, _k8s_params) -> None:
