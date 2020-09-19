@@ -1,0 +1,26 @@
+apiVersion: chaosblade.io/v1alpha1
+kind: ChaosBlade
+metadata:
+  name: test # you blade 项目的name
+spec:
+  experiments:
+  - scope: container  # 粒度
+    target: cpu  # 测试位置
+    action: fullload   # 测试项目
+    desc: ""  # describe
+    matchers:
+    # 下面都是参数列表对应
+    # container-ids
+    - name: container-ids  # 
+      value:
+      - "12389aeabc197090a60beb0a66c5e723032f714f8bd893198690eae60c1f2796"
+    # 命名空间
+    - name: namespace
+      value:
+      - "default"
+    # cpu-load， para
+    - name: cpu-percent
+      value: ["100"]
+    # pod names
+    - name: names
+      value: ["carts-db-55fd8499f6-qnbjs"]

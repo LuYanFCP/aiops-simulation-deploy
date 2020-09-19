@@ -2,6 +2,7 @@ import os
 import time
 import logging
 from typing import List
+import sys
 
 def get_now(format: str='%Y-%m-%d-%H.%M.%S') -> str:
     """
@@ -36,7 +37,7 @@ def get_log(name: str, log_name: str, format_p :str = '%(asctime)s - %(name)s - 
     """    
     logger = logging.getLogger(name)
     formatter = logging.Formatter(format_p)
-    ch = logging.StreamHandler()
+    ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(formatter)
     
@@ -51,6 +52,7 @@ def get_log(name: str, log_name: str, format_p :str = '%(asctime)s - %(name)s - 
         fh.setFormatter(formatter)
         logger.addHandler(fh)
     
+    logger.setLevel(logging.INFO)
     return logger
 
 # def get_error_yaml(kinds: List[str], duration: int, rand_gas: int) -> str:

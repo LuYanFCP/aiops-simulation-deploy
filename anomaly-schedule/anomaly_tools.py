@@ -1,5 +1,4 @@
 from datetime import datetime
-from multiprocessing.pool import IMapIterator
 from typing import List
 import os
 import yaml
@@ -8,17 +7,23 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from utils import get_log, get_now
 from kube_apply import fromYaml
 import kubernetes as k8s
-# from kubernetes import client, config
-# from k8s_tools import get_pod_rand
+from k8s_tools import get_pod_and_container_rand
 import random
 import json
 
-CHAOS_ACTIONS = {}
+CHAOS_ACTIONS = {'cpu': ['fullload']}
 CHAOS_PARAM = {}
 
 
 
 class Chaos:
+    """
+    
+    status:
+     + 测试完成
+    
+    """    
+    
     def __init__(self, _name, _scope, _target, _actions, _param, _k8s_params) -> None:
         self.name = _name
         self.scope = _scope  # 粒度
@@ -27,7 +32,19 @@ class Chaos:
         self.desc = ''  #
         self.params = _param  # 异常的参数
         self.k8s_param = _k8s_params  # container-ids, namespace, pod-names
+    
+    def to_json(self) -> str:
         
+        obj_dict = {
+            "name"      : self.name       ,
+            "scope"     : self.scope      ,
+            "target"    : self.target     ,
+            "actions"   : self.actions    ,
+            "desc"      : self.desc       ,
+            "params"    : self.params     ,
+            "k8s_param" : self.k8s_param  
+        }
+        return json.dumps(obj_dict)
         
     def to_k8s_yaml(self) -> str:
         """
@@ -79,22 +96,24 @@ class Chaos:
         return yaml.dump(k8s_yaml)
     
     @staticmethod
-    def random_get_chaos(name: str, kinds: List[str], duration: int):
+    def random_get_chaos(name: str, kinds: List[str], duration: int, v1client):
         
         scope = 'container'
         target = random.choice(kinds)
         actions = random.choice(CHAOS_ACTIONS[target]) # 随机选择一种target的一种actions
         params = {}
         k8s_param = {}
-        k8s_param['pod_name'] = get_pod_rand('sock-shop')
-        
-        return Chaos(scope, target, actions, params, k8s_param)
+        k8s_param['names'], k8s_param['container_ids'] = get_pod_and_container_rand('sock-shop', v1client)
+        k8s_param['namespace'] = 'sock-shop'
+        params = {'cpu-percent': '100', 'waiting-time': f'{duration}m'}
+        return Chaos(name, scope, target, actions, params, k8s_param)
 
 class Record:
     """[summary]
     TO-DO:
         - [x] 实现一个类似于logger一样一行一行持续写如的类
-    
+    status：
+        正在测试
     """    
     def __init__(self, file_path) -> None:
         self.fp = open(file_path, 'w', encoding='utf-8')
@@ -103,15 +122,18 @@ class Record:
     def record(self, date:datetime,  chaos):
         json_record = {
             'datetime': str(date),
-            'chaos': chaos}
-        self.fp.writelines(json.dump(json_record))
+            'chaos': chaos.to_json()}
+        self.fp.write(f"{json.dumps(json_record)}\n")
         self.fp.flush()   # 刷新缓冲区
+    
+    def close(self):
+        self.fp.close()
 
 class AnomalyScheduler:
     
     def __init__(self, args) -> None:
         self.config =  AnomalyScheduler.parse_config(args.config_file)
-        self.logger = get_log("anomaly_schedule", self.args.log_name, log_dir=args.log_dir)  # 初始化log
+        self.logger = get_log("anomaly_schedule", args.log_name, log_dir=args.log_dir)  # 初始化log
         self.schedulers = BlockingScheduler()
         # 初始化异常参数
         self.anomaly_nums = self.config['anomaly_nums']
@@ -145,12 +167,12 @@ class AnomalyScheduler:
         count = 1  # 异常计数器
         def job():
             nonlocal count  # 修改闭包的变量
-            
-            self.scheduler.remove_job(self.job_name)  # 先删除
+            if count != 1:
+                self.schedulers.remove_job(self.job_name)  # 先删除
             anomaly_duration = self.__get_next_duration(self.anomaly_time, self.anomaly_time_gas)
             
             # 创建异常对象
-            chaos = Chaos.random_get_chaos(self.interval_kinds, anomaly_duration)
+            chaos = Chaos.random_get_chaos(f"chaos_{count}", self.interval_kinds, anomaly_duration, self.k8s_v1)
             
             # 得到raw_yaml
             error_yaml_raw_data = chaos.to_k8s_yaml()
@@ -158,13 +180,13 @@ class AnomalyScheduler:
             # 注入开始
             begin_time = datetime.now()
             fromYaml(error_yaml_raw_data, client=self.k8s_client)
-            self.logger.info(f"第{count}个异常开始注入!, 异常的种类为： 注入异常的时间为: {str(begin_time)}, 持续时间为{anomaly_duration}min!")
+            self.logger.info(f"第{count}个异常开始注入!, 异常的种类为： {chaos.target}-{chaos.actions}-{chaos.k8s_param['names']} 注入异常的时间为: {str(begin_time)}, 持续时间为{anomaly_duration}min!")
             
             # 写入记录
             self.record.record(begin_time, chaos)
             
             # 下一次异常注入
-            next_duration = self.__get_next_duration(self, self.anomaly_time, self.anomaly_time_gas)
+            next_duration = self.__get_next_duration(self.anomaly_time, self.anomaly_time_gas)
         
             if count < self.anomaly_nums:
                 self.schedulers.add_job(job, "interval", minutes=next_duration, id=self.job_name)
@@ -174,9 +196,12 @@ class AnomalyScheduler:
                     self.scheduler.remove_job(self.job_name)  # 先删除
                 except Exception:
                     return
+            count+=1
         
         # 开始
-        time.sleep(60*10) # 前十分钟没有异常
+        time.sleep(60) # 前十分钟没有异常
+        # time.sleep(60*10) # 前十分钟没有异常
+        print("开始")
         self.logger.info("开始第一个异常!!!!")
         job()
                 
@@ -184,6 +209,7 @@ class AnomalyScheduler:
         return random.randint(-rand_gas, rand_gas) + base_time      
     
     def start(self) -> None:
+        self.jobs()
         self.schedulers.start()
             
     @staticmethod
@@ -202,10 +228,11 @@ class AnomalyScheduler:
         """        
         if not os.path.exists(path):
             raise FileExistsError("config的路径不存在，或者路径错误！")
-        if os.path.splitext(path)[-1] not in ["yaml", "yml"]:
+        # print(os.path.splitext(path))
+        if os.path.splitext(path)[-1][1:] not in ["yaml", "yml"]:
             raise FileExistsError("文件的格式错误！")
         
-        with open("path", "r") as f:
+        with open(path, "r") as f:
             obj = yaml.load(f)
         
         return obj

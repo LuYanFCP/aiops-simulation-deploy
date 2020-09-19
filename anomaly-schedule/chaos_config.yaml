@@ -1,0 +1,8 @@
+anomaly_nums: 10
+interval_time: 1
+interval_time_rand_gas: 0
+anomaly_kinds: 
+  - cpu
+anomaly_time: 1
+anomaly_time_gas: 0
+record_file_path: ./res.log
