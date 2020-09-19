@@ -16,4 +16,4 @@
 修改的小部分
 
 + 很多插件更换为国内的源或者dockerhub的源。
-+ 
++ 部分容器修改了部分的权限问题，比如prometheus的权限问题，增加prometheus对kubectl的`cadvisor`部分的权限。
