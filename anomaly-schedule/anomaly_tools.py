@@ -5,33 +5,18 @@ import os
 import yaml
 import time
 from apscheduler.schedulers.blocking import BlockingScheduler
-from .utils import get_log, get_now, get_error_yaml
-from .kube_apply import fromYaml
+from utils import get_log, get_now
+from kube_apply import fromYaml
 import kubernetes as k8s
 # from kubernetes import client, config
-from .k8s_tools import get_pod_rand
+# from k8s_tools import get_pod_rand
 import random
 import json
 
 CHAOS_ACTIONS = {}
 CHAOS_PARAM = {}
 
-class Record:
-    """[summary]
-    TO-DO:
-        - [x] 实现一个类似于logger一样一行一行持续写如的类
-    
-    """    
-    def __init__(self, file_path) -> None:
-        self.fp = open(file_path, 'w', encoding='utf-8')
-        # self.fp.writelines("[")
-        
-    def record(self, date:datetime,  chaos: Chaos):
-        json_record = {
-            'datetime': str(date),
-            'chaos': chaos}
-        self.fp.writelines(json.dump(json_record))
-        self.fp.flush()   # 刷新缓冲区
+
 
 class Chaos:
     def __init__(self, _name, _scope, _target, _actions, _param, _k8s_params) -> None:
@@ -43,7 +28,16 @@ class Chaos:
         self.params = _param  # 异常的参数
         self.k8s_param = _k8s_params  # container-ids, namespace, pod-names
         
+        
     def to_k8s_yaml(self) -> str:
+        """
+        主要功能是通过Chaos对象生成k8s所需要的yaml文件
+        
+        Returns
+        -------
+        str
+            K8S_yaml raw file
+        """        
         # 固定部分
         k8s_yaml = {}
         k8s_yaml['apiVersion'] = 'chaosblade.io/v1alpha1'
@@ -52,10 +46,40 @@ class Chaos:
         k8s_yaml['spec'] = {}
         
         # 可变部分
-        # k8s_yaml['spec'][]
+        k8s_yaml['spec']['experiments'] = []
+        
+        # 比较容易的
+        experiment = {
+            'scope': self.scope,
+            'target': self.target,
+            'action': self.actions,
+            'desc': self.desc,
+            'matchers': []
+        }
+        
+        k8s_yaml['spec']['experiments'].append(experiment)
+        
+        # 对详细参数进行重构
+        experiment['matchers']  # 向这里append
+        
+        # 目标容器的位置
+        for name, value in self.k8s_param.items():
+            experiment['matchers'].append({'name': name, 'value': [value]}) 
+        # # namespace
+        # experiment['matchers'].append({'name': 'namespace', 'value': [self.k8s_param['namespace']]}) 
+        # # pod
+        # experiment['matchers'].append({'name': 'names', 'value': [self.k8s_param['pod']]}) 
+        # # container
+        # experiment['matchers'].append({'name': 'container-ids', 'value': [self.k8s_param['container-ids']]}) 
+        
+        # 下面的具体的异常参数
+        for name, value in self.params.items():
+            experiment['matchers'].append({'name': name, 'value': [value]}) 
+        
+        return yaml.dump(k8s_yaml)
     
     @staticmethod
-    def random_get_chaos(name: str, kinds: List[str], duration: int) -> Chaos:
+    def random_get_chaos(name: str, kinds: List[str], duration: int):
         
         scope = 'container'
         target = random.choice(kinds)
@@ -66,6 +90,22 @@ class Chaos:
         
         return Chaos(scope, target, actions, params, k8s_param)
 
+class Record:
+    """[summary]
+    TO-DO:
+        - [x] 实现一个类似于logger一样一行一行持续写如的类
+    
+    """    
+    def __init__(self, file_path) -> None:
+        self.fp = open(file_path, 'w', encoding='utf-8')
+        # self.fp.writelines("[")
+        
+    def record(self, date:datetime,  chaos):
+        json_record = {
+            'datetime': str(date),
+            'chaos': chaos}
+        self.fp.writelines(json.dump(json_record))
+        self.fp.flush()   # 刷新缓冲区
 
 class AnomalyScheduler:
     
