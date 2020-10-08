@@ -11,8 +11,8 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
-    rule_files:
-      - "/etc/prometheus-rules/alert.rules"
+    # rule_files:
+    #   - "/etc/prometheus-rules/alert.rules"
     scrape_configs:
       # 增加的配置
 
@@ -113,6 +113,7 @@ data:
           - source_labels:
               - __meta_kubernetes_node_label_kubernetes_io_hostname
             target_label: instance
+            
       - job_name: weave
         kubernetes_sd_configs:
           - role: pod

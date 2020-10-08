@@ -44,6 +44,13 @@ prometheus-deployment-7c748db586-68ddf          1/1     Running   0          12s
 
 即为成功。
 
+## 更新日志
+
+### 10.7更新
+
++ 更新 prometheus的版本
++ 更新了 grafana版本
+
 ## BUG修复日志
 
 ### 10.7 无法部署
