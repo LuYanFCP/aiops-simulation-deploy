@@ -44,12 +44,36 @@ prometheus-deployment-7c748db586-68ddf          1/1     Running   0          12s
 
 即为成功。
 
+### grafana
+
+#### 使用旧版grafana
+
+```bash
+kubectl apply -f grafana
+```
+
+#### 使用最新版grafana
+
+```bash
+kubectl apply -f grafana-lastest
+```
+
+但是最新版本一直无法适配之前的`dashboard json`
+
+可以手动载入`monitoring/grafana-latest/sock-shop-config`中的配置。
+
+更多监控可以使用
+
 ## 更新日志
 
 ### 10.7更新
 
 + 更新 prometheus的版本
 + 更新了 grafana版本
+
+### 10.8更新
+
+增加grafana latest版本的适配。`monitoring/grafana-latest`
 
 ## BUG修复日志
 
