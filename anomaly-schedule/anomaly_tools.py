@@ -1,4 +1,5 @@
 from datetime import datetime
+from logging import setLoggerClass
 from typing import List
 import os
 import yaml
@@ -10,11 +11,17 @@ import kubernetes as k8s
 from k8s_tools import get_pod_and_container_rand
 import random
 import json
+from concurrent.futures import ThreadPoolExecutor
+
+POOL = ThreadPoolExecutor(10)
 
 CHAOS_ACTIONS = {'cpu': ['fullload']}
 CHAOS_PARAM = {}
 
-
+def delete_chaos(error_yaml_raw_data: str, duration: int, count: int):
+    time.sleep(duration)
+    os.system("cat <<EOF | kubectl delete -f - \n{}\nEOF".format(error_yaml_raw_data))
+    print(f"第{count}异常注入结束！")
 
 class Chaos:
     """
@@ -103,9 +110,12 @@ class Chaos:
         actions = random.choice(CHAOS_ACTIONS[target]) # 随机选择一种target的一种actions
         params = {}
         k8s_param = {}
-        k8s_param['names'], k8s_param['container_ids'] = get_pod_and_container_rand('sock-shop', v1client)
-        k8s_param['namespace'] = 'sock-shop'
-        params = {'cpu-percent': '100', 'waiting-time': f'{duration}m'}
+        k8s_param['names'], k8s_param['container-ids'] = get_pod_and_container_rand('sock-shop', v1client)
+        
+        k8s_param['container-ids'] = k8s_param['container-ids'].split("//")[1]
+
+        k8s_param['namespace'] = "sock-shop"
+        params = {'cpu-percent': '100'} #  'waiting-time': f'{duration}m'
         return Chaos(name, scope, target, actions, params, k8s_param)
 
 class Record:
@@ -159,7 +169,7 @@ class AnomalyScheduler:
         pass
             # self.logger
         
-    
+
     def jobs(self):
         """
         目标是一个迭代的jobs，从产生每一次运行完毕后都会，从任务队列中选取新的jobs，当认为队列中没有新的时候则直接结束。
@@ -172,16 +182,22 @@ class AnomalyScheduler:
             anomaly_duration = self.__get_next_duration(self.anomaly_time, self.anomaly_time_gas)
             
             # 创建异常对象
-            chaos = Chaos.random_get_chaos(f"chaos_{count}", self.interval_kinds, anomaly_duration, self.k8s_v1)
+            chaos = Chaos.random_get_chaos(f"chaos{count}", self.interval_kinds, anomaly_duration, self.k8s_v1)
             
             # 得到raw_yaml
             error_yaml_raw_data = chaos.to_k8s_yaml()
-            
+            self.logger.info(f"error_yaml_raw_data: \n" + error_yaml_raw_data)
+
             # 注入开始
             begin_time = datetime.now()
-            fromYaml(error_yaml_raw_data, client=self.k8s_client)
+            # self.logger.info("cmd: \n" + "kubectl apply -f - \n {}".format(error_yaml_raw_data))
+            self.logger.info(os.system("cat <<EOF | kubectl apply -f - \n{}\nEOF".format(error_yaml_raw_data)))
+            # fromYaml(error_yaml_raw_data, client=self.k8s_client)
             self.logger.info(f"第{count}个异常开始注入!, 异常的种类为： {chaos.target}-{chaos.actions}-{chaos.k8s_param['names']} 注入异常的时间为: {str(begin_time)}, 持续时间为{anomaly_duration}min!")
             
+            # delete pod
+            POOL.submit(delete_chaos, error_yaml_raw_data, 60 * anomaly_duration, count)
+
             # 写入记录
             self.record.record(begin_time, chaos)
             
@@ -196,6 +212,7 @@ class AnomalyScheduler:
                     self.scheduler.remove_job(self.job_name)  # 先删除
                 except Exception:
                     return
+                return # 退出
             count+=1
         
         # 开始
